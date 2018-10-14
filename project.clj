@@ -14,8 +14,8 @@
 
   :dependencies
   [[org.clojure/clojure      "1.5.1"]
-   [org.clojure/tools.reader "1.3.0"]
-   [com.taoensso/encore      "2.98.0"]
+   [org.clojure/tools.reader "1.3.2"]
+   [com.taoensso/encore      "2.102.0"]
    [org.iq80.snappy/snappy   "0.4"]
    [org.tukaani/xz           "1.8"]
    [net.jpountz.lz4/lz4      "1.3"]]
@@ -36,7 +36,7 @@
          {:plugins
           [[lein-pprint  "1.2.0"]
            [lein-ancient "0.6.15"]
-           [lein-codox   "0.10.4"]]}]}
+           [lein-codox   "0.10.5"]]}]}
 
   :test-paths ["test" "src"]
 
