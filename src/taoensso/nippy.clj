@@ -659,6 +659,27 @@
     (write-lg-count out len)
     (-run! (fn [in] (-freeze-with-meta! in out)) ary)))
 
+(defn itype-freezer
+  "Returns a function that will freeze an instance of class passed in. Must be an IType."
+  [^Class aclass]
+  (let [cname                 (.getName aclass)
+        ^objects basis-fields (let [basis-method (.getMethod aclass "getBasis" nil)
+                                    basis        (.invoke basis-method nil nil)]
+                                (into-array
+                                  (map (fn [b] (.getField aclass (name b)))
+                                       basis)))
+        nbasis                (alength basis-fields)]
+    (fn freezer-fn [^DataOutput out x]
+      (write-id out id-type)
+      (write-str out cname)
+
+      (loop [i 0]
+        (when (< i nbasis)
+          (let [^Field cfield (aget basis-fields i)
+                fvalue        (.get cfield x)]
+            (-freeze-without-meta! fvalue out)
+            (recur (inc i))))))))
+
 (defn- write-serializable [^DataOutput out x]
   (when-debug (println (str "write-serializable: " (type x))))
   (let [cname    (.getName (class x)) ; Reflect
@@ -826,6 +847,19 @@
 
       (-freeze-with-meta! x-val out))))
 
+(def ^ThreadLocal -reflection-cache-proxy
+  "HashMap - {<cls> <freeze-fn>} for freezing, {<className> <ctor-fn>} for thawing."
+  (proxy [ThreadLocal] []))
+
+(defmacro ^:private with-reflection-cache
+  "Experimental, subject to change.
+  Executes body with support for reusing IType reflection results."
+  [& body]
+  `(try
+     (.set -reflection-cache-proxy (enc/-vol! (java.util.HashMap.)))
+     (do ~@body)
+     (finally (.remove -reflection-cache-proxy))))
+
 (declare thaw-from-in!)
 (def ^:private thaw-cached
   (let [not-found (Object.)]
@@ -916,18 +950,17 @@
     (-freeze-without-meta! (into {} x) out)))
 
 (freezer IType
-   (let [aclass (class x)
-         cname  (.getName aclass)]
-     (write-id  out id-type)
-     (write-str out cname)
-     (let [basis-method (.getMethod aclass "getBasis" nil)
-           basis        (.invoke basis-method nil nil)]
-       (-run!
-         (fn [b]
-           (let [^Field cfield (.getField aclass (name b))]
-             (let [fvalue (.get cfield x)]
-               (-freeze-without-meta! fvalue out))))
-         basis))))
+   (let [^Class aclass (class x)]
+     (if-let [reflection-cache_ (.get -reflection-cache-proxy)]
+       (let [^java.util.HashMap reflection-cache @reflection-cache_
+             ?f (.get reflection-cache aclass)
+             f (or ?f
+                   (let [f (itype-freezer aclass)]
+                     ;; Mutating, but it is ThreadLocal
+                     (.put reflection-cache aclass f)
+                     f))]
+         (f out x))
+       ((itype-freezer aclass) out x))))
 
 (freezer Object
   (when-debug (println (str "freeze-fallback: " (type x))))
@@ -979,7 +1012,7 @@
   [x]
   (let [baos (ByteArrayOutputStream. 64)
         dos  (DataOutputStream. baos)]
-    (with-cache (-freeze-with-meta! x dos))
+    (with-reflection-cache (with-cache (-freeze-with-meta! x dos)))
     (.toByteArray baos)))
 
 (defn freeze
