@@ -8,6 +8,32 @@
 ;; vectors specific to AES256, Ref. https://goo.gl/qU4CCV
 ;;  or for a counter argument, Ref. https://goo.gl/9LA9Yb
 
+;;;;
+
+(defn const-ba=
+  "Constant-time `enc/ba=`, to prevent timing attacks."
+  [ba1 ba2]
+  (when (and ba1 ba2)
+    (let [len1 (alength ^bytes ba1)]
+      (when (== len1 (alength ^bytes ba2))
+        (enc/reduce-n
+          (fn [acc ^long idx]
+            (if (==
+                  (aget ^bytes ba1 idx)
+                  (aget ^bytes ba2 idx))
+              acc
+              false))
+          true
+          len1)))))
+
+(defn const-str= [s1 s2]
+  (when (and s1 s2)
+    (const-ba=
+      (.getBytes ^String s1 "UTF-8")
+      (.getBytes ^String s2 "UTF-8"))))
+
+(comment (const-str= "foo" "bar"))
+
 ;;;; Randomness
 
 (do
